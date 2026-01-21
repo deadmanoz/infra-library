@@ -18,7 +18,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 60,
+  "id": 65,
   "links": [],
   "panels": [
     {
@@ -99,7 +99,7 @@
           "sort": "none"
         }
       },
-      "pluginVersion": "12.2.0",
+      "pluginVersion": "12.3.0",
       "targets": [
         {
           "datasource": {
@@ -223,7 +223,7 @@
           "sort": "none"
         }
       },
-      "pluginVersion": "12.2.0",
+      "pluginVersion": "12.3.0",
       "targets": [
         {
           "datasource": {
@@ -267,7 +267,7 @@
         "showStarred": false,
         "tags": []
       },
-      "pluginVersion": "12.2.0",
+      "pluginVersion": "12.3.0",
       "title": "All dashboards",
       "transparent": true,
       "type": "dashlist"
@@ -349,7 +349,7 @@
           "sort": "none"
         }
       },
-      "pluginVersion": "12.2.0",
+      "pluginVersion": "12.3.0",
       "targets": [
         {
           "datasource": {
@@ -471,7 +471,7 @@
           "sort": "desc"
         }
       },
-      "pluginVersion": "12.2.0",
+      "pluginVersion": "12.3.0",
       "targets": [
         {
           "datasource": {
@@ -552,7 +552,7 @@
           "sort": "none"
         }
       },
-      "pluginVersion": "12.2.0",
+      "pluginVersion": "12.3.0",
       "targets": [
         {
           "datasource": {
@@ -578,41 +578,19 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "mode": "thresholds"
           },
           "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
             "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "bars",
-            "fillOpacity": 100,
-            "gradientMode": "none",
+            "fillOpacity": 70,
             "hideFrom": {
               "legend": false,
               "tooltip": false,
               "viz": false
             },
             "insertNulls": false,
-            "lineInterpolation": "linear",
             "lineWidth": 0,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "showValues": false,
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "normal"
-            },
-            "thresholdsStyle": {
-              "mode": "line"
-            }
+            "spanNulls": false
           },
           "mappings": [],
           "thresholds": {
@@ -623,8 +601,16 @@
                 "value": 0
               },
               {
+                "color": "semi-dark-orange",
+                "value": 0.0001
+              },
+              {
                 "color": "red",
-                "value": 0.5
+                "value": 1
+              },
+              {
+                "color": "#EAB839",
+                "value": 2
               }
             ]
           }
@@ -639,19 +625,22 @@
       },
       "id": 11,
       "options": {
+        "alignValue": "center",
         "legend": {
-          "calcs": [],
           "displayMode": "list",
           "placement": "bottom",
           "showLegend": true
         },
+        "mergeValues": true,
+        "rowHeight": 0.9,
+        "showValue": "always",
         "tooltip": {
           "hideZeros": false,
-          "mode": "multi",
+          "mode": "single",
           "sort": "none"
         }
       },
-      "pluginVersion": "12.2.0",
+      "pluginVersion": "12.3.0",
       "targets": [
         {
           "datasource": {
@@ -659,7 +648,7 @@
             "uid": "P1809F7CD0C75ACF3"
           },
           "editorMode": "code",
-          "expr": "resets(bitcoin_uptime[1h]) > 0",
+          "expr": "resets(peerobserver_rpc_uptime[1h]) > 0",
           "instant": false,
           "interval": "1h",
           "legendFormat": "{{host}}",
@@ -668,7 +657,7 @@
         }
       ],
       "title": "Bitcoin Core node restarts",
-      "type": "timeseries"
+      "type": "state-timeline"
     }
   ],
   "preload": false,
