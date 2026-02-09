@@ -100,7 +100,7 @@ in
           default = 4;
           example = 2;
         };
-        printToConsole = lib.mkEnableOption "Wether to print the debug logs to console (i.e. systemd) too. Disabled by default, but can be useful for testing.";
+        printToConsole = lib.mkEnableOption "Whether to print the debug logs to console (i.e. systemd) too. Disabled by default, but can be useful for testing.";
       };
     };
 
@@ -153,7 +153,7 @@ in
     # See https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html#Restart=
     systemd.services.bitcoind-mainnet.serviceConfig.Restart = lib.mkForce "no";
 
-    # for backwards compatability reasons, this is called "mainnet" and has to stay this way for now.
+    # for backwards compatibility reasons, this is called "mainnet" and has to stay this way for now.
     # Even if we run a signet/testnet/regtest node..
     services.bitcoind."mainnet" = {
       enable = true;
