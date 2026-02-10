@@ -1,3 +1,10 @@
+# Verifies that the starter template (templates/basic/) produces valid NixOS VMs.
+#
+# Simulates what a new user would do: initialises a fresh project from the
+# template, rewrites the flake input to point at the PR's code (instead of
+# the published master branch), then builds a VM for every host defined in the
+# template's infra.nix.  If any module change in the PR breaks the template,
+# this job fails.
 name: flake template check
 
 on:
