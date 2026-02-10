@@ -15,6 +15,10 @@ on:
   pull_request:
     types: [opened, reopened, synchronize, assigned, unassigned]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
 jobs:
   template-check:
     name: init default template and check it
