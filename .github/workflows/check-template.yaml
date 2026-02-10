@@ -30,6 +30,7 @@ jobs:
 
       - name: Build host VMs for template nixosConfigurations
         run: |
+          set -ex
           FLAKE_DIR=$(pwd)
 
           DIR=$(mktemp -d)
@@ -37,9 +38,9 @@ jobs:
 
           nix flake init --template path:$FLAKE_DIR/#basic
 
-          # echo use the local flake, otherwise we'll test against the master-branch flake in PRs
+          # use the local flake, otherwise we'll test against the master-branch flake in PRs
           head flake.nix
-          sed -i -e 's@github:0xB10C/peer-observer-infra-library@path://"$FLAKE_DIR"@g' flake.nix
+          sed -i -e "s@github:peer-observer/infra-library@path:${FLAKE_DIR}@g" flake.nix
           head flake.nix
 
           git init
