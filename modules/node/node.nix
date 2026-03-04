@@ -31,7 +31,8 @@ in
       prune = lib.mkOption {
         type = lib.types.int;
         default = 4000;
-        description = "The prune parameter for Bitcoin Core. 0 turns pruning off.";
+        example = 0;
+        description = "Pruning target in MiB. Set to 0 for a full (non-pruned) node. The default of 4000 MiB is sufficient for most monitoring deployments.";
       };
 
       package = lib.mkOption {
@@ -79,7 +80,8 @@ in
       dataDir = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
         default = null;
-        description = "The data directory of the node. By default, this is /var/lib/bitcoind-*/. Setting this can be useful if there's a bigger drive mounted somewhere else.";
+        example = "/mnt/data/bitcoin";
+        description = "The Bitcoin Core data directory. Defaults to /var/lib/bitcoind-mainnet/ (the service is named 'mainnet' for backwards compatibility, regardless of chain). Override if data lives on a separately mounted drive.";
       };
 
       banlistScript = lib.mkOption {
@@ -96,7 +98,7 @@ in
         };
         logsToKeep = lib.mkOption {
           type = lib.types.ints.u16;
-          description = "Logs to keep on the server before deleting them (maps to logrotates 'rotate' setting). Logs are rotated daily, so keeping two logs means keeping two days worth of logs.";
+          description = "Number of rotated log files to retain before deletion (maps to logrotate's 'rotate' setting). Logs rotate daily, so this is effectively a retention period in days.";
           default = 4;
           example = 2;
         };
