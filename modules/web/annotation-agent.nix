@@ -1,7 +1,8 @@
 # NixOS module for annotation-agent: AI-powered Grafana annotation service.
 # Options are defined in web.nix under peer-observer.web.annotationAgent.
-# Uses Claude Code CLI (claude) for AI generation — no Anthropic API key needed.
-# The service runs as `cfg.serviceUser` to access that user's ~/.claude/ credentials.
+# Uses Claude Code CLI (claude) with a Prometheus MCP server for autonomous
+# alert investigation. Claude queries Prometheus directly via MCP tools to
+# drill into per-peer data, identify root causes, and write specific annotations.
 { config, lib, pkgs, ... }:
 
 let
@@ -10,13 +11,27 @@ let
 
   annotation-agent = pkgs.rustPlatform.buildRustPackage {
     pname = "annotation-agent";
-    version = "0.1.0";
+    version = "0.2.0";
     src = ../../pkgs/annotation-agent;
     cargoLock.lockFile = ../../pkgs/annotation-agent/Cargo.lock;
 
     nativeBuildInputs = [ pkgs.pkg-config ];
     buildInputs = [ pkgs.openssl ];
   };
+
+  # MCP config for Claude CLI — gives it access to Prometheus via MCP tools.
+  # Uses uvx to run the prometheus-mcp-server Python package on demand.
+  mcpConfig = pkgs.writeText "annotation-agent-mcp.json" (builtins.toJSON {
+    mcpServers = {
+      prometheus = {
+        command = "${pkgs.uv}/bin/uvx";
+        args = [ "prometheus-mcp-server@1.6.0" ];
+        env = {
+          PROMETHEUS_URL = "http://127.0.0.1:${toString config.services.prometheus.port}";
+        };
+      };
+    };
+  });
 
 in
 {
@@ -34,9 +49,6 @@ in
 
       serviceConfig = let
         grafanaSecretPath = config.age.secrets."annotation-agent-grafana-api-key-${config.peer-observer.base.name}".path;
-        # Wrapper script that reads the agenix secret at runtime and passes it
-        # as an env var. Runs as cfg.serviceUser (no root needed — secret is
-        # owned by that user via the age.secrets.owner setting above).
         startScript = pkgs.writeShellScript "annotation-agent-start" ''
           set -euo pipefail
           export ANNOTATION_AGENT_GRAFANA_API_KEY="$(cat ${grafanaSecretPath})"
@@ -54,9 +66,9 @@ in
 
         Environment = [
           "ANNOTATION_AGENT_LISTEN_ADDR=${cfg.listenAddr}"
-          "ANNOTATION_AGENT_PROMETHEUS_URL=http://127.0.0.1:${toString config.services.prometheus.port}"
           "ANNOTATION_AGENT_GRAFANA_URL=http://127.0.0.1:${toString CONSTANTS.GRAFANA_PORT}"
           "ANNOTATION_AGENT_CLAUDE_BIN=/etc/profiles/per-user/${cfg.serviceUser}/bin/claude"
+          "ANNOTATION_AGENT_MCP_CONFIG=${mcpConfig}"
           "ANNOTATION_AGENT_LOG_FILE=${CONSTANTS.ANNOTATION_LOG_FILE}"
           "HOME=/home/${cfg.serviceUser}"
         ];

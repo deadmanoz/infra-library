@@ -8,10 +8,10 @@ use tracing::{error, info, warn};
 
 #[derive(Clone)]
 struct AppState {
-    prometheus_url: String,
     grafana_url: String,
     grafana_api_key: String,
     claude_bin: String,
+    mcp_config: String,
     log_file: Option<String>,
     http: reqwest::Client,
 }
@@ -31,24 +31,6 @@ struct Alert {
     annotations: Option<HashMap<String, String>>,
     starts_at: DateTime<Utc>,
     ends_at: Option<DateTime<Utc>>,
-}
-
-// Prometheus range query response types.
-#[derive(Debug, Deserialize)]
-struct PromResponse {
-    data: Option<PromData>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PromData {
-    result: Vec<PromResult>,
-}
-
-#[derive(Debug, Deserialize)]
-struct PromResult {
-    metric: HashMap<String, String>,
-    values: Option<Vec<(f64, String)>>,
 }
 
 // Grafana annotation payload.
@@ -76,16 +58,14 @@ async fn main() -> Result<()> {
         .context("invalid listen address")?;
 
     let state = Arc::new(AppState {
-        prometheus_url: env::var("ANNOTATION_AGENT_PROMETHEUS_URL")
-            .unwrap_or_else(|_| "http://127.0.0.1:9090".to_string()),
         grafana_url: env::var("ANNOTATION_AGENT_GRAFANA_URL")
             .unwrap_or_else(|_| "http://127.0.0.1:3000".to_string()),
         grafana_api_key: env::var("ANNOTATION_AGENT_GRAFANA_API_KEY")
             .context("ANNOTATION_AGENT_GRAFANA_API_KEY must be set")?,
-        // Path to the claude binary. Defaults to "claude" (must be on PATH).
         claude_bin: env::var("ANNOTATION_AGENT_CLAUDE_BIN")
             .unwrap_or_else(|_| "claude".to_string()),
-        // Optional path to append a plain-text annotation log.
+        mcp_config: env::var("ANNOTATION_AGENT_MCP_CONFIG")
+            .context("ANNOTATION_AGENT_MCP_CONFIG must be set")?,
         log_file: env::var("ANNOTATION_AGENT_LOG_FILE").ok(),
         http: reqwest::Client::new(),
     });
@@ -118,8 +98,7 @@ async fn handle_webhook(
 }
 
 async fn process_alert(state: &AppState, alert: &Alert, alertname: &str) -> Result<()> {
-    let metric_summary = query_prometheus(state, alert, alertname).await?;
-    let explanation = call_claude(state, alert, alertname, &metric_summary).await?;
+    let explanation = call_claude(state, alert, alertname).await?;
     post_grafana_annotation(state, alert, alertname, &explanation).await?;
     append_log(state, alert, alertname, &explanation).await;
     info!(alertname, "annotation posted successfully");
@@ -142,96 +121,14 @@ async fn append_log(state: &AppState, alert: &Alert, alertname: &str, explanatio
     }
 }
 
-async fn query_prometheus(state: &AppState, alert: &Alert, alertname: &str) -> Result<String> {
-    let start = alert.starts_at - chrono::Duration::minutes(30);
-    let end = alert.starts_at + chrono::Duration::minutes(30);
-
-    let queries = vec![
-        format!(r#"ALERTS{{alertname="{alertname}"}}"#),
-        format!(r#"peerobserver_anomaly:level{{anomaly_name=~".*{alertname}.*"}}"#),
-        format!(r#"peerobserver_anomaly:upper_band{{anomaly_name=~".*{alertname}.*"}}"#),
-    ];
-
-    let mut summary_parts: Vec<String> = Vec::new();
-
-    for query in &queries {
-        match prom_range_query(state, query, start, end).await {
-            Ok(results) => {
-                for r in &results {
-                    let metric_name = r.metric.get("__name__").cloned().unwrap_or_default();
-                    if let Some(values) = &r.values {
-                        if values.is_empty() {
-                            continue;
-                        }
-                        let nums: Vec<f64> = values
-                            .iter()
-                            .filter_map(|(_, v)| v.parse::<f64>().ok())
-                            .collect();
-                        if nums.is_empty() {
-                            continue;
-                        }
-                        let min = nums.iter().cloned().fold(f64::INFINITY, f64::min);
-                        let max = nums.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-                        let avg = nums.iter().sum::<f64>() / nums.len() as f64;
-                        let labels: String = r
-                            .metric
-                            .iter()
-                            .filter(|(k, _)| *k != "__name__")
-                            .map(|(k, v)| format!("{k}={v}"))
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        summary_parts.push(format!(
-                            "{metric_name}{{{labels}}}: min={min:.4}, max={max:.4}, avg={avg:.4} ({} samples)",
-                            nums.len()
-                        ));
-                    }
-                }
-            }
-            Err(e) => {
-                warn!(query, "prometheus query failed: {e:#}");
-            }
-        }
-    }
-
-    if summary_parts.is_empty() {
-        Ok("No metric data available for this alert window.".to_string())
-    } else {
-        Ok(summary_parts.join("\n"))
-    }
-}
-
-async fn prom_range_query(
-    state: &AppState,
-    query: &str,
-    start: DateTime<Utc>,
-    end: DateTime<Utc>,
-) -> Result<Vec<PromResult>> {
-    let resp = state
-        .http
-        .get(format!("{}/api/v1/query_range", state.prometheus_url))
-        .query(&[
-            ("query", query),
-            ("start", &start.timestamp().to_string()),
-            ("end", &end.timestamp().to_string()),
-            ("step", &"60".to_string()),
-        ])
-        .send()
-        .await
-        .context("prometheus request failed")?
-        .json::<PromResponse>()
-        .await
-        .context("prometheus response parse failed")?;
-
-    Ok(resp.data.map(|d| d.result).unwrap_or_default())
-}
-
-/// Call the Claude Code CLI to generate an annotation.
-/// Uses the subscription credentials stored in the service user's ~/.claude/ directory.
+/// Call the Claude Code CLI with Prometheus MCP tools to investigate the alert.
+///
+/// Claude has access to Prometheus via MCP and can autonomously query metrics,
+/// drill into per-peer data, and correlate across hosts to determine root cause.
 async fn call_claude(
     state: &AppState,
     alert: &Alert,
     alertname: &str,
-    metric_summary: &str,
 ) -> Result<String> {
     let host = alert.labels.get("host").cloned().unwrap_or_else(|| "unknown".to_string());
     let severity = alert.labels.get("severity").cloned().unwrap_or_else(|| "unknown".to_string());
@@ -242,26 +139,71 @@ async fn call_claude(
         .and_then(|a| a.get("description"))
         .cloned()
         .unwrap_or_else(|| "No description provided.".to_string());
-
-    let system = "You annotate Grafana dashboards for a Bitcoin P2P network monitoring system \
-                  (peer-observer). Given an alert and its metric data, write a concise 2-3 sentence \
-                  annotation explaining what happened, the likely cause, and whether operator action \
-                  is needed. Be specific about the metric values. Do not use markdown formatting.";
+    let dashboard = alert
+        .annotations
+        .as_ref()
+        .and_then(|a| a.get("dashboard"))
+        .cloned()
+        .unwrap_or_default();
+    let runbook = alert
+        .annotations
+        .as_ref()
+        .and_then(|a| a.get("runbook"))
+        .cloned()
+        .unwrap_or_default();
 
     let prompt = format!(
-        "{system}\n\n\
-         Alert: {alertname}\n\
-         Host: {host}\n\
-         Severity: {severity}\n\
-         Category: {category}\n\
-         Started: {}\n\
-         Description: {description}\n\n\
-         Prometheus metric data (±30 min window):\n{metric_summary}",
-        alert.starts_at
+        r#"You are an investigator for a Bitcoin P2P network monitoring system (peer-observer).
+You have access to Prometheus via MCP tools. Use them to investigate this alert.
+
+## Alert Details
+- Alert: {alertname}
+- Host: {host}
+- Severity: {severity}
+- Category: {category}
+- Started: {started}
+- Description: {description}
+{dashboard_line}{runbook_line}
+## Investigation Instructions
+
+1. QUERY the alert's triggering metric to confirm current values and see the trend.
+2. DRILL DOWN into related metrics to identify the specific cause:
+   - For connection alerts: check per-peer connection data, network types, peer ages
+   - For P2P message alerts: check per-peer message rates, identify top senders
+   - For queue alerts: check per-peer INV queue depths, identify stalled peers
+   - For mempool alerts: check fee rates, transaction counts, memory usage trends
+   - For resource alerts: check per-process resource usage
+   - For chain alerts: check block heights, IBD status, verification progress
+3. COMPARE across hosts if relevant (are other nodes seeing the same thing?).
+4. FORM a specific conclusion: what happened, which peer/component caused it, and whether action is needed.
+
+## Available Metric Prefixes
+- peerobserver_conn_* (connection metrics, per-peer data)
+- peerobserver_msg_* (P2P message counts by type and peer)
+- peerobserver_anomaly:* (anomaly detection bands and levels)
+- peerobserver_rpc_* (Bitcoin Core RPC data: peer_info, mempoolinfo, blockchaininfo, networkinfo)
+- peerobserver_validation_* (block validation events)
+- node_* (system metrics: CPU, memory, disk, network)
+
+Use execute_query for current values and execute_range_query for trends (use the ±30 min window around {started}).
+
+## Output Format
+Write a concise 3-5 sentence annotation. Be SPECIFIC: name the peer IP if you find one, quote exact metric values, state the likely cause with evidence. Do not use markdown formatting. End with whether operator action is needed and what action if so."#,
+        started = alert.starts_at,
+        dashboard_line = if dashboard.is_empty() { String::new() } else { format!("- Dashboard: {dashboard}\n") },
+        runbook_line = if runbook.is_empty() { String::new() } else { format!("- Runbook: {runbook}\n") },
     );
 
+    info!(alertname, host, "calling claude with MCP prometheus tools");
+
     let output = Command::new(&state.claude_bin)
-        .args(["--dangerously-skip-permissions", "-p", &prompt])
+        .args([
+            "--dangerously-skip-permissions",
+            "--mcp-config", &state.mcp_config,
+            "-p", &prompt,
+            "--model", "claude-sonnet-4-20250514",
+            "--max-turns", "10",
+        ])
         .output()
         .await
         .with_context(|| format!("failed to spawn claude process at '{}'", state.claude_bin))?;
