@@ -669,10 +669,7 @@ in
           enable = true;
           port = CONSTANTS.ALERTMANAGER_PORT;
           webExternalUrl = "https://${config.peer-observer.web.domain}/alertmanager/";
-          extraFlags = [
-            "--cluster.listen-address="  # Disable clustering for single instance
-            "--config.file=/run/alertmanager/alertmanager.yaml"  # Override NixOS module's config path
-          ];
+          extraFlags = [ "--cluster.listen-address=" ];  # Disable clustering for single instance
           # Minimal config to satisfy module - overwritten by our ExecStartPre
           checkConfig = false;
           configText = ''
@@ -694,18 +691,18 @@ in
     # Systemd override to generate config with secret at runtime
     systemd.services.alertmanager = lib.mkIf config.peer-observer.web.alertmanager.enable {
       serviceConfig = {
+        # Disable PrivateTmp so the + (root) ExecStartPre script and Alertmanager
+        # share the same /tmp namespace. Without this, the injected config is invisible.
+        PrivateTmp = lib.mkForce false;
         # Overwrite NixOS-generated config with our secret-injected version
         # Prefix with + to run as root (needed to read agenix secret)
-        # Write to /run/alertmanager/ instead of /tmp/ because PrivateTmp=true
-        # means the + (root) script sees system /tmp while the service sees private /tmp
         ExecStartPre = let
           webhookSecretPath = config.age.secrets."alertmanager-webhook-url-${config.peer-observer.base.name}".path;
           cfg = config.peer-observer.web.alertmanager;
           script = pkgs.writeShellScript "alertmanager-inject-secret" ''
             set -euo pipefail
-            mkdir -p /run/alertmanager
             WEBHOOK_URL=$(cat ${webhookSecretPath})
-            cat > /run/alertmanager/alertmanager.yaml <<EOF
+            cat > /tmp/alert-manager-substituted.yaml <<EOF
 global:
   resolve_timeout: 5m
 
