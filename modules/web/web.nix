@@ -694,10 +694,12 @@ in
     # Systemd override to generate config with secret at runtime
     systemd.services.alertmanager = lib.mkIf config.peer-observer.web.alertmanager.enable {
       serviceConfig = {
-        # DynamicUser creates filesystem namespacing that prevents root ExecStartPre
-        # from writing to the same /tmp the service process sees. Disable it so
-        # the + (root) inject-secret script can overwrite the config file in-place.
+        # DynamicUser + PrivateTmp create filesystem namespacing that prevents
+        # the root (+) ExecStartPre inject-secret script from writing to the same
+        # /tmp that the alertmanager process sees. Disable both so the root
+        # pre-start script can overwrite the NixOS-generated config file in-place.
         DynamicUser = lib.mkForce false;
+        PrivateTmp = lib.mkForce false;
         # Overwrite NixOS-generated config with our secret-injected version
         # Prefix with + to run as root (needed to read agenix secret)
         ExecStartPre = let
