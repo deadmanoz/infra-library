@@ -669,7 +669,10 @@ in
           enable = true;
           port = CONSTANTS.ALERTMANAGER_PORT;
           webExternalUrl = "https://${config.peer-observer.web.domain}/alertmanager/";
-          extraFlags = [ "--cluster.listen-address=" ];  # Disable clustering for single instance
+          extraFlags = [
+            "--cluster.listen-address="  # Disable clustering for single instance
+            "--config.file=/run/alertmanager/alertmanager.yaml"  # Override NixOS module's config path
+          ];
           # Minimal config to satisfy module - overwritten by our ExecStartPre
           checkConfig = false;
           configText = ''
@@ -693,14 +696,16 @@ in
       serviceConfig = {
         # Overwrite NixOS-generated config with our secret-injected version
         # Prefix with + to run as root (needed to read agenix secret)
-        # Runs after NixOS's pre-start which creates /tmp/alert-manager-substituted.yaml
+        # Write to /run/alertmanager/ instead of /tmp/ because PrivateTmp=true
+        # means the + (root) script sees system /tmp while the service sees private /tmp
         ExecStartPre = let
           webhookSecretPath = config.age.secrets."alertmanager-webhook-url-${config.peer-observer.base.name}".path;
           cfg = config.peer-observer.web.alertmanager;
           script = pkgs.writeShellScript "alertmanager-inject-secret" ''
             set -euo pipefail
+            mkdir -p /run/alertmanager
             WEBHOOK_URL=$(cat ${webhookSecretPath})
-            cat > /tmp/alert-manager-substituted.yaml <<EOF
+            cat > /run/alertmanager/alertmanager.yaml <<EOF
 global:
   resolve_timeout: 5m
 
