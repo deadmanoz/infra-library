@@ -672,14 +672,29 @@ in
           extraFlags = [
             "--cluster.listen-address="  # Disable clustering for single instance
           ];
-          # Minimal config to satisfy module — overwritten by ExecStartPre at runtime.
-          # The NixOS module generates --config.file pointing at the envsubst output.
+          # The NixOS module runs envsubst on this config in ExecStartPre,
+          # replacing $WEBHOOK_URL with the value from EnvironmentFile.
+          # This avoids fighting DynamicUser/PrivateTmp namespace issues.
           checkConfig = false;
-          configText = ''
+          configText = let
+            cfg = config.peer-observer.web.alertmanager;
+          in ''
+            global:
+              resolve_timeout: 5m
             route:
-              receiver: dummy
+              receiver: default
+              group_by: [alertname, host, severity]
+              group_wait: ${cfg.groupWait}
+              group_interval: ${cfg.groupInterval}
+              repeat_interval: ${cfg.repeatInterval}
             receivers:
-              - name: dummy
+              - name: default
+                webhook_configs:
+                  - url: $WEBHOOK_URL
+                    send_resolved: true
+          '' + lib.optionalString config.peer-observer.web.annotationAgent.enable ''
+                  - url: http://${config.peer-observer.web.annotationAgent.listenAddr}/webhook
+                    send_resolved: false
           '';
         };
       };
@@ -691,43 +706,20 @@ in
       file = config.peer-observer.web.alertmanager.webhook.urlFile;
     };
 
-    # Systemd override to generate config with secret at runtime
+    # Provide WEBHOOK_URL env var for the NixOS module's envsubst pre-start.
+    # Uses a pre-start script to generate an EnvironmentFile from the agenix secret,
+    # which runs as root (+) before the NixOS module's envsubst runs as DynamicUser.
     systemd.services.alertmanager = lib.mkIf config.peer-observer.web.alertmanager.enable {
-      serviceConfig = {
-        # DynamicUser + PrivateTmp create filesystem namespacing that prevents
-        # the root (+) ExecStartPre inject-secret script from writing to the same
-        # /tmp that the alertmanager process sees. Disable both so the root
-        # pre-start script can overwrite the NixOS-generated config file in-place.
-        DynamicUser = lib.mkForce false;
-        PrivateTmp = lib.mkForce false;
-        # Overwrite NixOS-generated config with our secret-injected version
-        # Prefix with + to run as root (needed to read agenix secret)
-        ExecStartPre = let
-          webhookSecretPath = config.age.secrets."alertmanager-webhook-url-${config.peer-observer.base.name}".path;
-          cfg = config.peer-observer.web.alertmanager;
-          script = pkgs.writeShellScript "alertmanager-inject-secret" ''
-            set -euo pipefail
-            WEBHOOK_URL=$(cat ${webhookSecretPath})
-            cat > /tmp/alert-manager-substituted.yaml <<EOF
-global:
-  resolve_timeout: 5m
-
-route:
-  receiver: default
-  group_by: [alertname, host, severity]
-  group_wait: ${cfg.groupWait}
-  group_interval: ${cfg.groupInterval}
-  repeat_interval: ${cfg.repeatInterval}
-
-receivers:
-  - name: default
-    webhook_configs:
-      - url: $WEBHOOK_URL
-        send_resolved: true
-${lib.optionalString config.peer-observer.web.annotationAgent.enable
-  "      - url: http://${config.peer-observer.web.annotationAgent.listenAddr}/webhook\n        send_resolved: false\n"}EOF
-          '';
-        in [ "+${script}" ];  # + prefix runs as root
+      serviceConfig = let
+        webhookSecretPath = config.age.secrets."alertmanager-webhook-url-${config.peer-observer.base.name}".path;
+        mkEnvFile = pkgs.writeShellScript "alertmanager-env" ''
+          set -euo pipefail
+          echo "WEBHOOK_URL=$(cat ${webhookSecretPath})" > /run/alertmanager-env
+          chmod 644 /run/alertmanager-env
+        '';
+      in {
+        ExecStartPre = [ "+${mkEnvFile}" ];
+        EnvironmentFile = "/run/alertmanager-env";
       };
     };
   };
