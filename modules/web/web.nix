@@ -669,18 +669,28 @@ in
           enable = true;
           port = CONSTANTS.ALERTMANAGER_PORT;
           webExternalUrl = "https://${config.peer-observer.web.domain}/alertmanager/";
-          extraFlags = [
-            "--cluster.listen-address="  # Disable clustering for single instance
-            "--config.file=/run/alertmanager/alertmanager.yaml"  # Use our runtime config
-          ];
-          # Dummy config to satisfy NixOS module validation.
-          # The real config is written by ExecStartPre to /run/alertmanager/.
+          extraFlags = [ "--cluster.listen-address=" ];  # Disable clustering for single instance
+          # Real config with $WEBHOOK_URL placeholder. The NixOS module's preStart
+          # runs envsubst on this, replacing $WEBHOOK_URL from environmentFile.
           checkConfig = false;
-          configText = ''
+          environmentFile = "/run/alertmanager-env";
+          configText = let cfg = config.peer-observer.web.alertmanager; in ''
+            global:
+              resolve_timeout: 5m
             route:
-              receiver: dummy
+              receiver: default
+              group_by: [alertname, host, severity]
+              group_wait: ${cfg.groupWait}
+              group_interval: ${cfg.groupInterval}
+              repeat_interval: ${cfg.repeatInterval}
             receivers:
-              - name: dummy
+              - name: default
+                webhook_configs:
+                  - url: $WEBHOOK_URL
+                    send_resolved: true
+          '' + lib.optionalString config.peer-observer.web.annotationAgent.enable ''
+                  - url: http://${config.peer-observer.web.annotationAgent.listenAddr}/webhook
+                    send_resolved: false
           '';
         };
       };
@@ -692,38 +702,17 @@ in
       file = config.peer-observer.web.alertmanager.webhook.urlFile;
     };
 
-    # Write the real alertmanager config to /run/alertmanager/ at startup.
-    # Uses + (root) prefix to read the agenix secret. Writing to RuntimeDirectory
-    # (/run/alertmanager/) avoids DynamicUser/PrivateTmp namespace issues with /tmp.
+    # Create env file with WEBHOOK_URL from agenix secret before alertmanager starts.
+    # The NixOS module's preStart sources this via environmentFile, then envsubst
+    # replaces $WEBHOOK_URL in configText. All within the DynamicUser's namespace.
     systemd.services.alertmanager = lib.mkIf config.peer-observer.web.alertmanager.enable {
       serviceConfig = let
         webhookSecretPath = config.age.secrets."alertmanager-webhook-url-${config.peer-observer.base.name}".path;
-        cfg = config.peer-observer.web.alertmanager;
-        script = pkgs.writeShellScript "alertmanager-inject-secret" (''
+        script = pkgs.writeShellScript "alertmanager-mk-env" ''
           set -euo pipefail
-          WEBHOOK_URL=$(cat ${webhookSecretPath})
-          cat > /run/alertmanager/alertmanager.yaml <<'YAMLEOF'
-          global:
-            resolve_timeout: 5m
-          route:
-            receiver: default
-            group_by: [alertname, host, severity]
-            group_wait: ${cfg.groupWait}
-            group_interval: ${cfg.groupInterval}
-            repeat_interval: ${cfg.repeatInterval}
-          receivers:
-            - name: default
-              webhook_configs:
-                - url: WEBHOOK_URL_PLACEHOLDER
-                  send_resolved: true
-        '' + lib.optionalString config.peer-observer.web.annotationAgent.enable ''
-                - url: http://${config.peer-observer.web.annotationAgent.listenAddr}/webhook
-                  send_resolved: false
-        '' + ''
-          YAMLEOF
-          sed -i "s|WEBHOOK_URL_PLACEHOLDER|$WEBHOOK_URL|" /run/alertmanager/alertmanager.yaml
-          chmod 644 /run/alertmanager/alertmanager.yaml
-        '');
+          echo "WEBHOOK_URL=$(cat ${webhookSecretPath})" > /run/alertmanager-env
+          chmod 644 /run/alertmanager-env
+        '';
       in {
         ExecStartPre = [ "+${script}" ];
       };
