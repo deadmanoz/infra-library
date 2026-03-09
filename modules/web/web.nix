@@ -689,7 +689,7 @@ in
                   - url: $WEBHOOK_URL
                     send_resolved: true
           ${lib.optionalString config.peer-observer.web.annotationAgent.enable
-            "        - url: http://${config.peer-observer.web.annotationAgent.listenAddr}/webhook\n            send_resolved: false"}
+            "        - url: http://${config.peer-observer.web.annotationAgent.listenAddr}/webhook\n          send_resolved: false"}
           '';
         };
       };
