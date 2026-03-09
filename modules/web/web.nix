@@ -669,8 +669,11 @@ in
           enable = true;
           port = CONSTANTS.ALERTMANAGER_PORT;
           webExternalUrl = "https://${config.peer-observer.web.domain}/alertmanager/";
-          extraFlags = [ "--cluster.listen-address=" ];  # Disable clustering for single instance
-          # Minimal config to satisfy module - overwritten by our ExecStartPre
+          extraFlags = [
+            "--cluster.listen-address="  # Disable clustering for single instance
+          ];
+          # Minimal config to satisfy module — overwritten by ExecStartPre at runtime.
+          # The NixOS module generates --config.file pointing at the envsubst output.
           checkConfig = false;
           configText = ''
             route:
@@ -691,9 +694,10 @@ in
     # Systemd override to generate config with secret at runtime
     systemd.services.alertmanager = lib.mkIf config.peer-observer.web.alertmanager.enable {
       serviceConfig = {
-        # Disable PrivateTmp so the + (root) ExecStartPre script and Alertmanager
-        # share the same /tmp namespace. Without this, the injected config is invisible.
-        PrivateTmp = lib.mkForce false;
+        # DynamicUser creates filesystem namespacing that prevents root ExecStartPre
+        # from writing to the same /tmp the service process sees. Disable it so
+        # the + (root) inject-secret script can overwrite the config file in-place.
+        DynamicUser = lib.mkForce false;
         # Overwrite NixOS-generated config with our secret-injected version
         # Prefix with + to run as root (needed to read agenix secret)
         ExecStartPre = let
