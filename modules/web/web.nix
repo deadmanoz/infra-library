@@ -167,6 +167,41 @@ in
       };
     };
 
+    alertmanager = {
+      enable = lib.mkEnableOption "Alertmanager for Prometheus alert notifications";
+
+      webhook = {
+        urlFile = lib.mkOption {
+          type = lib.types.nullOr lib.types.path;
+          default = null;
+          example = "./secrets/alertmanager-webhook-url-vps-webserver.age";
+          description = ''
+            Path to agenix-encrypted file containing the webhook URL.
+            File should contain just the URL (e.g., https://discord.com/api/webhooks/...).
+            Use host-specific naming: alertmanager-webhook-url-<hostname>.age
+          '';
+        };
+      };
+
+      groupWait = lib.mkOption {
+        type = lib.types.str;
+        default = "30s";
+        description = "How long to wait before sending a notification for a group of alerts.";
+      };
+
+      groupInterval = lib.mkOption {
+        type = lib.types.str;
+        default = "5m";
+        description = "How long to wait before sending notification about new alerts in a group.";
+      };
+
+      repeatInterval = lib.mkOption {
+        type = lib.types.str;
+        default = "4h";
+        description = "How long to wait before re-sending a notification for an alert.";
+      };
+    };
+
   };
 
   config = lib.mkIf (config.peer-observer.web.enable && !config.peer-observer.base.setup) {
@@ -179,6 +214,11 @@ in
       {
         assertion = config.peer-observer.web.grafana.admin_user != null;
         message = "`services.peer-observer-web.grafana.admin_user` must be set.";
+      }
+      {
+        assertion = !config.peer-observer.web.alertmanager.enable
+          || config.peer-observer.web.alertmanager.webhook.urlFile != null;
+        message = "When alertmanager is enabled, alertmanager.webhook.urlFile must be set.";
       }
     ];
 
@@ -317,7 +357,14 @@ in
             '';
           }
           // (lib.mapAttrs' mkWebsocketLocation (config.infra.nodes))
-          // (lib.mapAttrs' mkDebugLogLocation (config.infra.nodes));
+          // (lib.mapAttrs' mkDebugLogLocation (config.infra.nodes))
+          // (lib.optionalAttrs config.peer-observer.web.alertmanager.enable {
+            # Alertmanager UI - behind Nostr auth by default (not whitelisted like /monitoring)
+            "/alertmanager" = {
+              proxyPass = "http://127.0.0.1:${toString CONSTANTS.ALERTMANAGER_PORT}";
+              proxyWebsockets = true;
+            };
+          });
         };
 
         # Users can and should overwrite this, if they want to e.g. put FULL_ACCESS
@@ -557,6 +604,70 @@ in
             static_configs = (mkScrapeConfigs config.infra.nodes CONSTANTS.NODE_TO_WEBSERVER_PORT);
           }
         ];
+        # Wire Prometheus to Alertmanager when enabled
+        alertmanagers = lib.mkIf config.peer-observer.web.alertmanager.enable [
+          {
+            static_configs = [
+              { targets = [ "127.0.0.1:${toString CONSTANTS.ALERTMANAGER_PORT}" ]; }
+            ];
+          }
+        ];
+        # Alertmanager service - config generated at runtime with secret injection
+        alertmanager = lib.mkIf config.peer-observer.web.alertmanager.enable {
+          enable = true;
+          port = CONSTANTS.ALERTMANAGER_PORT;
+          webExternalUrl = "https://${config.peer-observer.web.domain}/alertmanager/";
+          extraFlags = [ "--cluster.listen-address=" ];  # Disable clustering for single instance
+          # Minimal config to satisfy module - overwritten by our ExecStartPre
+          checkConfig = false;
+          configText = ''
+            route:
+              receiver: dummy
+            receivers:
+              - name: dummy
+          '';
+        };
       };
+
+    # Agenix secret for alertmanager webhook URL
+    age.secrets."alertmanager-webhook-url-${config.peer-observer.base.name}" = lib.mkIf
+      (config.peer-observer.web.alertmanager.enable &&
+       config.peer-observer.web.alertmanager.webhook.urlFile != null) {
+      file = config.peer-observer.web.alertmanager.webhook.urlFile;
+    };
+
+    # Systemd override to generate config with secret at runtime
+    systemd.services.alertmanager = lib.mkIf config.peer-observer.web.alertmanager.enable {
+      serviceConfig = {
+        # Overwrite NixOS-generated config with our secret-injected version
+        # Prefix with + to run as root (needed to read agenix secret)
+        # Runs after NixOS's pre-start which creates /tmp/alert-manager-substituted.yaml
+        ExecStartPre = let
+          webhookSecretPath = config.age.secrets."alertmanager-webhook-url-${config.peer-observer.base.name}".path;
+          cfg = config.peer-observer.web.alertmanager;
+          script = pkgs.writeShellScript "alertmanager-inject-secret" ''
+            set -euo pipefail
+            WEBHOOK_URL=$(cat ${webhookSecretPath})
+            cat > /tmp/alert-manager-substituted.yaml <<EOF
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: default
+  group_by: [alertname, host, severity]
+  group_wait: ${cfg.groupWait}
+  group_interval: ${cfg.groupInterval}
+  repeat_interval: ${cfg.repeatInterval}
+
+receivers:
+  - name: default
+    webhook_configs:
+      - url: $WEBHOOK_URL
+        send_resolved: true
+EOF
+          '';
+        in [ "+${script}" ];  # + prefix runs as root
+      };
+    };
   };
 }

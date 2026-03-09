@@ -38,6 +38,7 @@ let
                         <a class="nav-link" href="/monitoring/playlists">playlist</a>
                         <a class="nav-link" href="/debug-logs/">debug logs</a>
                         <a class="nav-link" href="/websocket/">websocket</a>
+                        <a class="nav-link" href="/alertmanager/">alerts</a>
                       ''
                     else
                       ""
