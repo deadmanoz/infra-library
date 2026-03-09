@@ -703,18 +703,22 @@ in
     };
 
     # Create env file with WEBHOOK_URL from agenix secret before alertmanager starts.
-    # The NixOS module's preStart sources this via environmentFile, then envsubst
-    # replaces $WEBHOOK_URL in configText. All within the DynamicUser's namespace.
-    systemd.services.alertmanager = lib.mkIf config.peer-observer.web.alertmanager.enable {
-      serviceConfig = let
-        webhookSecretPath = config.age.secrets."alertmanager-webhook-url-${config.peer-observer.base.name}".path;
-        script = pkgs.writeShellScript "alertmanager-mk-env" ''
+    # Must be a separate service because systemd checks EnvironmentFile before
+    # running ExecStartPre — the file must already exist when alertmanager starts.
+    systemd.services.alertmanager-env = lib.mkIf config.peer-observer.web.alertmanager.enable {
+      description = "Generate alertmanager environment file from agenix secret";
+      before = [ "alertmanager.service" ];
+      requiredBy = [ "alertmanager.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStart = let
+          webhookSecretPath = config.age.secrets."alertmanager-webhook-url-${config.peer-observer.base.name}".path;
+        in pkgs.writeShellScript "alertmanager-mk-env" ''
           set -euo pipefail
           echo "WEBHOOK_URL=$(cat ${webhookSecretPath})" > /run/alertmanager-env
           chmod 644 /run/alertmanager-env
         '';
-      in {
-        ExecStartPre = [ "+${script}" ];
       };
     };
   };
