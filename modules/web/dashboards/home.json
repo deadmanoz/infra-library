@@ -658,6 +658,80 @@
       ],
       "title": "Bitcoin Core node restarts",
       "type": "state-timeline"
+    },
+    {
+      "id": 12,
+      "type": "state-timeline",
+      "title": "Alert Firing History",
+      "description": "When each PeerObserver alert was in firing state. Red = firing. Sourced from Prometheus ALERTS time series.",
+      "gridPos": {
+        "x": 0,
+        "y": 27,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P1809F7CD0C75ACF3"
+      },
+      "options": {
+        "mergeValues": true,
+        "showValue": "never",
+        "alignValue": "center",
+        "rowHeight": 0.85,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 0,
+            "fillOpacity": 80
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "1": {
+                  "text": "firing",
+                  "color": "red",
+                  "index": 0
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              },
+              {
+                "value": 1,
+                "color": "red"
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "noValue": "inactive"
+        }
+      },
+      "targets": [
+        {
+          "expr": "ALERTS{alertname=~\"PeerObserver.*\", alertstate=\"firing\"}",
+          "legendFormat": "{{alertname}} / {{host}}",
+          "instant": false,
+          "range": true
+        }
+      ]
     }
   ],
   "preload": false,
