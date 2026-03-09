@@ -658,6 +658,7 @@ in
         # Wire Prometheus to Alertmanager when enabled
         alertmanagers = lib.mkIf config.peer-observer.web.alertmanager.enable [
           {
+            path_prefix = "/alertmanager";
             static_configs = [
               { targets = [ "127.0.0.1:${toString CONSTANTS.ALERTMANAGER_PORT}" ]; }
             ];
