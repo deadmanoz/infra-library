@@ -18,6 +18,7 @@ let
       ./modules/peer-observer.nix
       ./modules/base/base.nix
       ./modules/web/web.nix
+      ./modules/web/annotation-agent.nix
       ./modules/node/node.nix
       ./modules/node/parca/agent.nix
       ./modules/node/parca/server.nix

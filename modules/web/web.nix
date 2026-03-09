@@ -202,6 +202,33 @@ in
       };
     };
 
+    annotationAgent = {
+      enable = lib.mkEnableOption "AI annotation agent for Grafana dashboards";
+
+      listenAddr = lib.mkOption {
+        type = lib.types.str;
+        default = "127.0.0.1:9099";
+        description = "Address and port the annotation agent listens on.";
+      };
+
+      grafanaApiKeyFile = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = null;
+        example = "./secrets/annotation-agent-grafana-api-key.age";
+        description = "Path to agenix-encrypted file containing the Grafana service account API key.";
+      };
+
+      serviceUser = lib.mkOption {
+        type = lib.types.str;
+        description = ''
+          The system user the annotation-agent service runs as.
+          This user must have Claude Code (claude) installed and authenticated
+          in their ~/.claude/ directory. The service needs access to those
+          credentials to call the Claude CLI.
+        '';
+      };
+    };
+
   };
 
   config = lib.mkIf (config.peer-observer.web.enable && !config.peer-observer.base.setup) {
@@ -219,6 +246,21 @@ in
         assertion = !config.peer-observer.web.alertmanager.enable
           || config.peer-observer.web.alertmanager.webhook.urlFile != null;
         message = "When alertmanager is enabled, alertmanager.webhook.urlFile must be set.";
+      }
+      {
+        assertion = !config.peer-observer.web.annotationAgent.enable
+          || config.peer-observer.web.annotationAgent.grafanaApiKeyFile != null;
+        message = "When annotationAgent is enabled, grafanaApiKeyFile must be set.";
+      }
+      {
+        assertion = !config.peer-observer.web.annotationAgent.enable
+          || config.peer-observer.web.annotationAgent.serviceUser != "";
+        message = "When annotationAgent is enabled, serviceUser must be set to the user with Claude Code authenticated.";
+      }
+      {
+        assertion = !config.peer-observer.web.annotationAgent.enable
+          || config.peer-observer.web.alertmanager.enable;
+        message = "annotationAgent requires alertmanager to be enabled.";
       }
     ];
 
@@ -326,6 +368,14 @@ in
 
             "/debug-logs" = {
               extraConfig = "rewrite /debug-logs /debug-logs/ redirect;";
+            };
+
+            "= /annotation-log" = lib.mkIf config.peer-observer.web.annotationAgent.enable {
+              alias = CONSTANTS.ANNOTATION_LOG_FILE;
+              extraConfig = ''
+                default_type text/plain;
+                add_header Content-Type "text/plain; charset=utf-8";
+              '';
             };
             "/debug-logs/" = {
               root = "${debugLogPage}";
@@ -665,7 +715,8 @@ receivers:
     webhook_configs:
       - url: $WEBHOOK_URL
         send_resolved: true
-EOF
+${lib.optionalString config.peer-observer.web.annotationAgent.enable
+  "      - url: http://${config.peer-observer.web.annotationAgent.listenAddr}/webhook\n        send_resolved: false\n"}EOF
           '';
         in [ "+${script}" ];  # + prefix runs as root
       };

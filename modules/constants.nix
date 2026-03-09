@@ -98,6 +98,9 @@ rec {
   BANLIST_RPC_RPC_AUTH = "a2c604d2857fbc90e92996c75fbf9647$90a59f24f29c744ca4487ee9d61047f52657f54849cab6da4a55510cd58d3d73";
 
   GRAFANA_PORT = 9321;
+
+  # Path where annotation-agent appends its plain-text annotation log.
+  ANNOTATION_LOG_FILE = "/var/lib/annotation-agent/annotations.log";
   ALERTMANAGER_PORT = 9093;
 
   # Port for the nginx server that provides limited access to
