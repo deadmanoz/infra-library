@@ -166,24 +166,17 @@ You have access to Prometheus via MCP tools. Use them to investigate this alert.
 {dashboard_line}{runbook_line}
 ## Investigation Instructions
 
-1. QUERY the alert's triggering metric to confirm current values and see the trend.
-2. DRILL DOWN into related metrics to identify the specific cause:
+1. DISCOVER what metrics are available using list_metrics and get_metric_metadata.
+2. QUERY the alert's triggering metric to confirm current values and see the trend.
+3. DRILL DOWN into related metrics to identify the specific cause:
    - For connection alerts: check per-peer connection data, network types, peer ages
    - For P2P message alerts: check per-peer message rates, identify top senders
    - For queue alerts: check per-peer INV queue depths, identify stalled peers
    - For mempool alerts: check fee rates, transaction counts, memory usage trends
    - For resource alerts: check per-process resource usage
    - For chain alerts: check block heights, IBD status, verification progress
-3. COMPARE across hosts if relevant (are other nodes seeing the same thing?).
-4. FORM a specific conclusion: what happened, which peer/component caused it, and whether action is needed.
-
-## Available Metric Prefixes
-- peerobserver_conn_* (connection metrics, per-peer data)
-- peerobserver_msg_* (P2P message counts by type and peer)
-- peerobserver_anomaly:* (anomaly detection bands and levels)
-- peerobserver_rpc_* (Bitcoin Core RPC data: peer_info, mempoolinfo, blockchaininfo, networkinfo)
-- peerobserver_validation_* (block validation events)
-- node_* (system metrics: CPU, memory, disk, network)
+4. COMPARE across hosts if relevant (are other nodes seeing the same thing?).
+5. FORM a specific conclusion: what happened, which peer/component caused it, and whether action is needed.
 
 Use execute_query for current values and execute_range_query for trends (use the ±30 min window around {started}).
 
@@ -202,24 +195,71 @@ Write a concise 3-5 sentence annotation. Be SPECIFIC: name the peer IP if you fi
             "--mcp-config", &state.mcp_config,
             "-p", &prompt,
             "--model", "claude-sonnet-4-20250514",
-            "--max-turns", "10",
+            "--output-format", "json",
         ])
         .output()
         .await
         .with_context(|| format!("failed to spawn claude process at '{}'", state.claude_bin))?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("claude process exited with {}: {stderr}", output.status);
+    // Log stderr if present (may contain MCP server startup info or warnings).
+    let stderr_text = String::from_utf8_lossy(&output.stderr);
+    if !stderr_text.trim().is_empty() {
+        warn!(alertname, host, stderr = %stderr_text.trim(), "claude stderr output");
     }
 
-    let text = String::from_utf8(output.stdout)
-        .context("claude output is not valid UTF-8")?
+    if !output.status.success() {
+        anyhow::bail!("claude process exited with {}: {stderr_text}", output.status);
+    }
+
+    let raw = String::from_utf8(output.stdout)
+        .context("claude output is not valid UTF-8")?;
+
+    // Parse JSON output to extract result, turn count, cost, and usage.
+    let json: serde_json::Value = serde_json::from_str(&raw)
+        .context("failed to parse claude JSON output")?;
+
+    let num_turns = json.get("num_turns").and_then(|v| v.as_u64()).unwrap_or(0);
+    let duration_ms = json.get("duration_ms").and_then(|v| v.as_u64()).unwrap_or(0);
+    let duration_api_ms = json.get("duration_api_ms").and_then(|v| v.as_u64()).unwrap_or(0);
+    let cost_usd = json.get("total_cost_usd").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let is_error = json.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false);
+    let stop_reason = json.get("stop_reason").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let input_tokens = json.pointer("/usage/input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+    let output_tokens = json.pointer("/usage/output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+    let session_id = json.get("session_id").and_then(|v| v.as_str()).unwrap_or("unknown");
+
+    info!(
+        alertname,
+        host,
+        num_turns,
+        duration_ms,
+        duration_api_ms,
+        cost_usd,
+        input_tokens,
+        output_tokens,
+        stop_reason,
+        is_error,
+        session_id,
+        "claude investigation completed"
+    );
+
+    if is_error {
+        let result = json.get("result").and_then(|v| v.as_str()).unwrap_or("unknown error");
+        anyhow::bail!("claude returned error: {result}");
+    }
+
+    let text = json.get("result")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
         .trim()
         .to_string();
 
     if text.is_empty() {
-        anyhow::bail!("claude returned empty output");
+        anyhow::bail!("claude returned empty result");
+    }
+
+    if text.contains("Reached max turns") {
+        anyhow::bail!("claude hit max turns limit without producing an annotation");
     }
 
     Ok(text)
