@@ -1,1 +1,8 @@
 result
+
+# Dolt database files (added by bd init)
+.dolt/
+*.db
+
+# Local tooling artifacts
+.playwright-mcp/
