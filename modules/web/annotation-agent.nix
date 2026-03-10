@@ -3,21 +3,14 @@
 # Uses Claude Code CLI (claude) with a Prometheus MCP server for autonomous
 # alert investigation. Claude queries Prometheus directly via MCP tools to
 # drill into per-peer data, identify root causes, and write specific annotations.
-{ config, lib, pkgs, ... }:
+#
+# The peer-observer-agent package comes from the peer-observer-agents flake input,
+# passed via specialArgs in lib.nix.
+{ config, lib, pkgs, peer-observer-agent-pkg, ... }:
 
 let
   cfg = config.peer-observer.web.annotationAgent;
   CONSTANTS = import ../constants.nix;
-
-  annotation-agent = pkgs.rustPlatform.buildRustPackage {
-    pname = "annotation-agent";
-    version = "0.2.0";
-    src = ../../pkgs/annotation-agent;
-    cargoLock.lockFile = ../../pkgs/annotation-agent/Cargo.lock;
-
-    nativeBuildInputs = [ pkgs.pkg-config ];
-    buildInputs = [ pkgs.openssl ];
-  };
 
   # MCP config for Claude CLI — gives it access to Prometheus via MCP tools.
   # Uses uvx to run the prometheus-mcp-server Python package on demand.
@@ -52,7 +45,7 @@ in
         startScript = pkgs.writeShellScript "annotation-agent-start" ''
           set -euo pipefail
           export ANNOTATION_AGENT_GRAFANA_API_KEY="$(cat ${grafanaSecretPath})"
-          exec ${annotation-agent}/bin/annotation-agent
+          exec ${peer-observer-agent-pkg}/bin/peer-observer-agent
         '';
       in {
         ExecStart = "${startScript}";

@@ -2,6 +2,7 @@
   nixpkgs,
   agenix,
   b10c-nix,
+  peer-observer-agents,
   system,
   ...
 }:
@@ -37,6 +38,9 @@ let
     config: extraModules: arch:
     nixpkgs.lib.nixosSystem {
       system = arch;
+      specialArgs = {
+        peer-observer-agent-pkg = peer-observer-agents.packages.${arch}.peer-observer-agent;
+      };
       modules = (mkModules extraModules) ++ [ config ];
     };
 

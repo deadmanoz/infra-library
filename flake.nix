@@ -11,6 +11,10 @@
       url = "github:ryantm/agenix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    peer-observer-agents = {
+      url = "github:deadmanoz/peer-observer-agents";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -19,6 +23,7 @@
       nixpkgs,
       agenix,
       b10c-nix,
+      peer-observer-agents,
       ...
     }:
     let
@@ -47,6 +52,7 @@
             system
             agenix
             b10c-nix
+            peer-observer-agents
             ;
         })
       );

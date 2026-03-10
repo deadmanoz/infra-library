@@ -102,11 +102,32 @@
         "type": "github"
       }
     },
+    "peer-observer-agents": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1773131548,
+        "narHash": "sha256-PuANkRyYGef61nErkwxrc/BdeVNUH6QnJIkt8Z/m/VM=",
+        "owner": "deadmanoz",
+        "repo": "peer-observer-agents",
+        "rev": "42c91dc802e6c3e7446383dd247e73bf6b977af1",
+        "type": "github"
+      },
+      "original": {
+        "owner": "deadmanoz",
+        "repo": "peer-observer-agents",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "agenix": "agenix",
         "b10c-nix": "b10c-nix",
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "peer-observer-agents": "peer-observer-agents"
       }
     },
     "systems": {
