@@ -19,6 +19,10 @@
           "uid": "-- Grafana --"
         },
         "enable": true,
+        "filter": {
+          "exclude": false,
+          "ids": [12]
+        },
         "hide": false,
         "iconColor": "orange",
         "name": "AI Annotations",
