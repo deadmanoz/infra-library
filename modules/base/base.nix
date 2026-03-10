@@ -54,6 +54,11 @@ in
       description = "The https://github.com/0xb10c/nix package version to use";
     };
 
+    peerObserverPackage = lib.mkOption {
+      default = config.peer-observer.base.b10c-pkgs.peer-observer;
+      description = "The peer-observer package to use. Override to use a custom build (e.g. from a fork).";
+    };
+
     setup = lib.mkEnableOption "This host is being setup. This means, the host doesn't need secrets yet which makes installation of the system with e.g. nixos-anywhere easier.";
 
     extraConfig = lib.mkOption {

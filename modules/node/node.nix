@@ -545,7 +545,7 @@ in
     environment.systemPackages = [
       # the peer-observer tools and extractors as packages
       # e.g. `$ logger`
-      config.peer-observer.base.b10c-pkgs.peer-observer
+      config.peer-observer.base.peerObserverPackage
       # useful to see NATS server load
       pkgs.nats-top
     ];
