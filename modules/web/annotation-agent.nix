@@ -12,6 +12,13 @@ let
   cfg = config.peer-observer.web.annotationAgent;
   CONSTANTS = import ../constants.nix;
 
+  # Build the RPC_HOSTS JSON map from infra.nodes: {"node-name": "wireguard-ip", ...}
+  # Only includes nodes that are not in setup mode.
+  activeNodes = lib.filterAttrs (_: host: !host.setup) config.infra.nodes;
+  rpcHostsJson = builtins.toJSON (
+    lib.mapAttrs (_: host: host.wireguard.ip) activeNodes
+  );
+
   # MCP config for Claude CLI — gives it access to Prometheus via MCP tools.
   # Uses uvx to run the prometheus-mcp-server Python package on demand.
   mcpConfig = pkgs.writeText "annotation-agent-mcp.json" (builtins.toJSON {
@@ -64,6 +71,11 @@ in
           "ANNOTATION_AGENT_MCP_CONFIG=${mcpConfig}"
           "ANNOTATION_AGENT_LOG_FILE=${CONSTANTS.ANNOTATION_LOG_FILE}"
           "HOME=/home/${cfg.serviceUser}"
+        ] ++ lib.optionals cfg.rpcPreFetch.enable [
+          "ANNOTATION_AGENT_RPC_HOSTS=${rpcHostsJson}"
+          "ANNOTATION_AGENT_RPC_USER=${cfg.rpcPreFetch.rpcUser}"
+          "ANNOTATION_AGENT_RPC_PASSWORD=${CONSTANTS.RPC_EXTRACTOR_RPC_PASSWORD}"
+          "ANNOTATION_AGENT_RPC_PORT=${toString cfg.rpcPreFetch.rpcPort}"
         ];
       };
     };

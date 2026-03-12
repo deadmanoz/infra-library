@@ -227,6 +227,22 @@ in
           credentials to call the Claude CLI.
         '';
       };
+
+      rpcPreFetch = {
+        enable = lib.mkEnableOption "Bitcoin Core RPC pre-fetch for annotation-agent investigations";
+
+        rpcUser = lib.mkOption {
+          type = lib.types.str;
+          default = "rpc-extractor";
+          description = "Bitcoin Core RPC username. Must match an rpcauth entry on the nodes.";
+        };
+
+        rpcPort = lib.mkOption {
+          type = lib.types.port;
+          default = 9000;
+          description = "Port on each node's WireGuard nginx proxy for Bitcoin Core RPC.";
+        };
+      };
     };
 
   };
