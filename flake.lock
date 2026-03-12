@@ -109,11 +109,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1773131548,
-        "narHash": "sha256-PuANkRyYGef61nErkwxrc/BdeVNUH6QnJIkt8Z/m/VM=",
+        "lastModified": 1773311028,
+        "narHash": "sha256-aoMurMdCfS4+WyBhfFDIgsqJosZor8p7rYiruiW55Mc=",
         "owner": "deadmanoz",
         "repo": "peer-observer-agents",
-        "rev": "42c91dc802e6c3e7446383dd247e73bf6b977af1",
+        "rev": "1a262e8aa8f27ee8379eaf62d52b8b3f32e5dc7d",
         "type": "github"
       },
       "original": {
