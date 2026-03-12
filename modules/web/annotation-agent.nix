@@ -52,6 +52,9 @@ in
         startScript = pkgs.writeShellScript "annotation-agent-start" ''
           set -euo pipefail
           export ANNOTATION_AGENT_GRAFANA_API_KEY="$(cat ${grafanaSecretPath})"
+          ${lib.optionalString cfg.rpcPreFetch.enable ''
+            export ANNOTATION_AGENT_RPC_HOSTS='${rpcHostsJson}'
+          ''}
           exec ${peer-observer-agent-pkg}/bin/peer-observer-agent
         '';
       in {
@@ -72,7 +75,6 @@ in
           "ANNOTATION_AGENT_LOG_FILE=${CONSTANTS.ANNOTATION_LOG_FILE}"
           "HOME=/home/${cfg.serviceUser}"
         ] ++ lib.optionals cfg.rpcPreFetch.enable [
-          "ANNOTATION_AGENT_RPC_HOSTS=${rpcHostsJson}"
           "ANNOTATION_AGENT_RPC_USER=${cfg.rpcPreFetch.rpcUser}"
           "ANNOTATION_AGENT_RPC_PASSWORD=${CONSTANTS.RPC_EXTRACTOR_RPC_PASSWORD}"
           "ANNOTATION_AGENT_RPC_PORT=${toString cfg.rpcPreFetch.rpcPort}"
