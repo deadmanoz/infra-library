@@ -224,6 +224,10 @@ in
           rpcwhitelist=addrmanobserver:getrawaddrman
           rpcauth=addrmanobserver:${CONSTANTS.ADDRMAN_OBSERVER_RPC_AUTH}
         ''}
+        # blocktemplate user for block template sampling
+        rpcwhitelist=blocktemplate:getblocktemplate
+        rpcauth=blocktemplate:${CONSTANTS.BLOCK_TEMPLATE_RPC_AUTH}
+
         ${optionalString config.peer-observer.node.bitcoind.net.useTor "debug=tor"}
         ${optionalString config.peer-observer.node.bitcoind.net.useI2P ''
           debug=i2p

@@ -97,6 +97,8 @@ rec {
   BANLIST_RPC_PASSWORD = "eQu4Iqu3aid8Bujool0xioj2auM0leeGh9voekei";
   BANLIST_RPC_RPC_AUTH = "a2c604d2857fbc90e92996c75fbf9647$90a59f24f29c744ca4487ee9d61047f52657f54849cab6da4a55510cd58d3d73";
 
+  BLOCK_TEMPLATE_RPC_AUTH = "e4b282f1053b191b0c8a99dd86745176$51c51144fa938f4f568fe2b699e21b6aeae8ecef1740a3d6db5c612d53ef020e";
+
   GRAFANA_PORT = 9321;
 
   # Path where annotation-agent appends its plain-text annotation log.
